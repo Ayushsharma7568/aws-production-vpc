@@ -1,17 +1,13 @@
 # Screenshots
 
-This directory contains screenshots from the AWS Console demonstrating the infrastructure setup and configuration.
+AWS Console screenshots demonstrating the production-style VPC infrastructure.
 
-## Recommended Screenshots
+## Contents
 
-- VPC configuration
-- Subnet layout
-- Internet Gateway
-- ALB configuration and listeners
-- Target Group with healthy targets
-- EC2 instances in private subnets
-- Launch Template configuration
-- Auto Scaling Group settings
-- Security Group rules
-
-Add screenshots as `.png` or `.jpg` files to this directory.
+| File | Description |
+|---|---|
+| `01-vpc-resource-map.png` | VPC resource map showing subnets, route tables, IGW, and NAT gateways across AZs |
+| `02-target-group.png` | Target group configuration — HTTP on port 8000, linked to ALB |
+| `03-auto-scaling-group.png` | Auto Scaling Group with launch template, capacity settings, and multi-AZ |
+| `04-security-group.png` | Security group inbound rules (ports 8000, 22, 80) |
+| `05-ec2-instances.png` | Running EC2 instances across Availability Zones with health checks passed |

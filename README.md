@@ -647,6 +647,25 @@ Confirm the Auto Scaling Group is maintaining desired capacity:
 
 ---
 
+## 📸 Screenshots
+
+### VPC Resource Map
+![VPC Resource Map](screenshots/01-vpc-resource-map.png)
+
+### Target Group
+![Target Group](screenshots/02-target-group.png)
+
+### Auto Scaling Group
+![Auto Scaling Group](screenshots/03-auto-scaling-group.png)
+
+### Security Group
+![Security Group](screenshots/04-security-group.png)
+
+### EC2 Instances
+![EC2 Instances](screenshots/05-ec2-instances.png)
+
+---
+
 ## 📝 License
 
 This project is for educational and demonstration purposes.
