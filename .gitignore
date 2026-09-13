@@ -1,0 +1,29 @@
+# AWS Credentials & Secrets
+*.pem
+.env
+.env.*
+.aws/
+
+# SSH Keys
+*.key
+id_rsa
+id_ed25519
+
+# Terraform state (if applicable)
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
