@@ -10,7 +10,6 @@ A production-style AWS VPC infrastructure built from scratch, demonstrating real
 
 - [Project Overview](#-project-overview)
 - [Architecture](#-architecture)
-- [Architecture Diagram](#-architecture-diagram)
 - [Traffic Flow](#-traffic-flow)
 - [AWS Services Used](#-aws-services-used)
 - [VPC and Subnet Design](#-vpc-and-subnet-design)
@@ -91,14 +90,6 @@ The infrastructure follows a **hub-and-spoke networking model** with clear separ
 2. **ALB in public subnets** — The Application Load Balancer spans public subnets, serving as the single entry point
 3. **Multi-AZ** — Resources are distributed across multiple Availability Zones for fault tolerance
 4. **Port 8000** — Application runs on port 8000, with the ALB handling external HTTP (port 80) traffic
-
----
-
-## 📐 Architecture Diagram
-
-![Architecture Diagram](architecture/architecture.png)
-
-> The architecture diagram illustrates the complete infrastructure layout including VPC boundaries, subnet placement, ALB configuration, and EC2 instance distribution across Availability Zones.
 
 ---
 
