@@ -150,3 +150,269 @@ Understanding how traffic flows through the infrastructure is critical:
 
 > **Important:** Users never communicate directly with the EC2 instances. All traffic is mediated through the ALB, providing a layer of security and abstraction.
 
+---
+
+## ☁️ AWS Services Used
+
+| AWS Service | Purpose | Key Configuration |
+|---|---|---|
+| **VPC** | Isolated virtual network | Custom CIDR block, DNS enabled |
+| **Subnets** | Network segmentation | Public + Private across multiple AZs |
+| **Internet Gateway** | Internet connectivity | Attached to VPC, routes public traffic |
+| **Application Load Balancer** | Traffic distribution | Internet-facing, HTTP listener on port 80 |
+| **Target Group** | Instance grouping | HTTP health checks on port 8000 |
+| **EC2 Instances** | Compute resources | Running application on port 8000 |
+| **Launch Template** | Instance configuration | AMI, instance type, security group, user data |
+| **Auto Scaling Group** | Capacity management | Min/Max/Desired capacity, multi-AZ |
+| **Security Groups** | Network firewalls | Inbound/Outbound rules per resource type |
+
+---
+
+## 🌐 VPC and Subnet Design
+
+### VPC (Virtual Private Cloud)
+
+The VPC serves as the foundational networking layer, providing an isolated virtual network within AWS:
+
+- **Custom CIDR Block** — Defines the IP address range for the entire VPC
+- **DNS Support** — Enabled for internal DNS resolution
+- **DNS Hostnames** — Enabled so EC2 instances receive public DNS names (when applicable)
+
+### Subnet Layout
+
+The infrastructure uses a **multi-AZ subnet architecture** with both public and private subnets:
+
+```
+VPC CIDR Block
+├── Public Subnet  (AZ-A)  →  ALB, Internet-facing resources
+├── Public Subnet  (AZ-B)  →  ALB, Internet-facing resources
+├── Private Subnet (AZ-A)  →  EC2 instances (application workloads)
+└── Private Subnet (AZ-B)  →  EC2 instances (application workloads)
+```
+
+### Why Multiple Availability Zones?
+
+- **Fault tolerance** — If one AZ experiences issues, the other AZ continues serving traffic
+- **High availability** — ALB automatically routes traffic to healthy instances in available AZs
+- **AWS best practice** — Production workloads should always span at least 2 AZs
+
+---
+
+## 🔒 Public vs Private Subnets
+
+Understanding the distinction between public and private subnets is fundamental to this architecture:
+
+### Public Subnets
+
+| Property | Value |
+|---|---|
+| **Route to Internet** | Yes — via Internet Gateway |
+| **Auto-assign Public IP** | Enabled |
+| **Hosts** | Application Load Balancer |
+| **Purpose** | Accept inbound internet traffic |
+
+### Private Subnets
+
+| Property | Value |
+|---|---|
+| **Route to Internet** | No direct route |
+| **Auto-assign Public IP** | Disabled |
+| **Hosts** | EC2 instances (application servers) |
+| **Purpose** | Run application workloads securely |
+
+### Why Place EC2 Instances in Private Subnets?
+
+1. **Reduced attack surface** — Instances have no public IP addresses and cannot be reached directly from the internet
+2. **Defense in depth** — Even if a security group rule is misconfigured, the lack of a public route provides an additional layer of protection
+3. **Compliance** — Many security frameworks require backend servers to be in private subnets
+4. **Controlled access** — All inbound traffic must pass through the ALB, which provides logging, monitoring, and traffic management
+
+---
+
+## 🚪 Internet Gateway
+
+The Internet Gateway (IGW) is a horizontally scaled, redundant, and highly available VPC component that enables communication between the VPC and the internet.
+
+### How It Works in This Architecture
+
+```
+Internet  ←→  Internet Gateway  ←→  Public Subnets (ALB)
+                                         │
+                                    Private Subnets (EC2)
+                                    (NO direct internet route)
+```
+
+### Key Points
+
+- **Attached to the VPC** — One IGW per VPC
+- **Route table association** — Only public subnet route tables have a route to the IGW (`0.0.0.0/0 → IGW`)
+- **Private subnets** — Do NOT have a route to the IGW, ensuring instances remain isolated
+- **Stateful** — Return traffic for outbound requests is automatically allowed
+
+---
+
+## ⚖️ Application Load Balancer
+
+The Application Load Balancer (ALB) is the **single entry point** for all user traffic into the application.
+
+### Configuration
+
+| Setting | Value |
+|---|---|
+| **Scheme** | Internet-facing |
+| **Type** | Application Load Balancer (Layer 7) |
+| **Listener** | HTTP on port 80 |
+| **Subnets** | Deployed across public subnets in multiple AZs |
+| **Target** | Forwards traffic to Target Group on port 8000 |
+
+### Why ALB?
+
+- **Layer 7 load balancing** — Operates at the application layer (HTTP/HTTPS), enabling content-based routing
+- **Health checks** — Automatically removes unhealthy instances from rotation
+- **Cross-AZ balancing** — Distributes traffic evenly across instances in multiple Availability Zones
+- **Scalability** — AWS manages the ALB's scaling automatically
+- **Security** — Acts as a reverse proxy, hiding backend instance details from users
+
+### ALB Listener Rules
+
+```
+Listener (HTTP:80)
+  └── Default Action: Forward to Target Group (Port 8000)
+```
+
+---
+
+## 🎯 Target Group and Health Checks
+
+The Target Group defines the set of EC2 instances that receive traffic from the ALB.
+
+### Target Group Configuration
+
+| Setting | Value |
+|---|---|
+| **Target Type** | Instance |
+| **Protocol** | HTTP |
+| **Port** | 8000 |
+| **VPC** | Project VPC |
+
+### Health Check Configuration
+
+| Setting | Value |
+|---|---|
+| **Protocol** | HTTP |
+| **Port** | 8000 |
+| **Path** | `/` (root path) |
+| **Healthy Threshold** | Number of consecutive successes to mark healthy |
+| **Unhealthy Threshold** | Number of consecutive failures to mark unhealthy |
+| **Timeout** | Seconds to wait for a health check response |
+| **Interval** | Seconds between health checks |
+
+### Health Check Flow
+
+```
+ALB  ──(HTTP GET /)──►  EC2 Instance (Port 8000)
+                              │
+                    ┌─────────┴─────────┐
+                    ▼                   ▼
+              HTTP 200 OK         Non-200 / Timeout
+              (Healthy ✅)         (Unhealthy ❌)
+```
+
+### Why Health Checks Matter
+
+- **Automatic failover** — Unhealthy instances are removed from the target group; traffic is routed only to healthy instances
+- **Zero-downtime deployments** — New instances must pass health checks before receiving traffic
+- **Monitoring** — Provides visibility into application health across the fleet
+
+---
+
+## 💻 EC2 Instances
+
+The EC2 instances are the **compute backbone** of the architecture, running the application workload.
+
+### Instance Configuration
+
+| Property | Details |
+|---|---|
+| **Placement** | Private subnets (no public IP) |
+| **Application Port** | 8000 |
+| **Multi-AZ** | Distributed across multiple Availability Zones |
+| **Access** | Only accessible through the ALB |
+| **Management** | Launched and managed by Auto Scaling Group |
+
+### Why Private Instances?
+
+- Instances have **no public IP address**
+- Instances have **no direct internet route**
+- All inbound traffic **must flow through the ALB**
+- This is the **recommended pattern** for production web applications
+
+---
+
+## 📋 Launch Template
+
+The Launch Template defines the **blueprint** for every EC2 instance launched by the Auto Scaling Group.
+
+### What the Launch Template Specifies
+
+| Parameter | Purpose |
+|---|---|
+| **AMI ID** | The base machine image for instances |
+| **Instance Type** | Compute capacity (CPU, memory) |
+| **Security Group** | Firewall rules applied to instances |
+| **User Data** | Bootstrap script to configure the instance on launch |
+
+### User Data Script
+
+The user data script runs automatically when each instance launches, typically:
+
+1. Updating system packages
+2. Installing the application runtime/dependencies
+3. Starting the application on port 8000
+
+> **Note:** The user data script ensures every instance launched by the ASG is identically configured and immediately ready to serve traffic.
+
+---
+
+## 📈 Auto Scaling Group
+
+The Auto Scaling Group (ASG) **automates capacity management** by launching and terminating EC2 instances based on demand.
+
+### ASG Configuration
+
+| Setting | Value |
+|---|---|
+| **Launch Template** | References the project launch template |
+| **VPC Subnets** | Private subnets across multiple AZs |
+| **Target Group** | Attached to the ALB target group |
+| **Min Capacity** | Minimum number of running instances |
+| **Max Capacity** | Maximum number of running instances |
+| **Desired Capacity** | Target number of instances to maintain |
+
+### How Auto Scaling Works
+
+```
+                    ┌───────────────────┐
+                    │  Auto Scaling      │
+                    │  Group             │
+                    └────────┬──────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              ▼              ▼              ▼
+        ┌──────────┐  ┌──────────┐  ┌──────────┐
+        │ Instance │  │ Instance │  │ Instance │
+        │ (AZ-A)   │  │ (AZ-B)   │  │ (AZ-A)   │
+        └──────────┘  └──────────┘  └──────────┘
+
+    Scales OUT (adds instances) when demand increases
+    Scales IN (removes instances) when demand decreases
+```
+
+### Key Benefits
+
+- **High availability** — Automatically replaces failed instances
+- **Cost optimization** — Scales down during low-traffic periods
+- **Consistent capacity** — Maintains desired number of healthy instances
+- **AZ balancing** — Distributes instances evenly across Availability Zones
+- **Integration** — Automatically registers new instances with the target group
+
