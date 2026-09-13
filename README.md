@@ -547,3 +547,121 @@ Confirm the Auto Scaling Group is maintaining desired capacity:
 2. Verify **Desired**, **Min**, and **Max** capacity values
 3. Check the **Activity** tab for recent scaling events
 4. Confirm instances match the desired count
+
+---
+
+## 🔧 Troubleshooting
+
+### Common Issues and Solutions
+
+#### ❌ ALB returns 502 Bad Gateway
+
+| Possible Cause | Solution |
+|---|---|
+| Application not running on EC2 | SSH into instance and verify the app is running on port 8000 |
+| Wrong port in target group | Ensure target group port matches the application port (8000) |
+| Security group blocking traffic | Verify EC2 SG allows inbound TCP:8000 from ALB SG |
+| Health checks failing | Check health check path and port configuration |
+
+#### ❌ All targets showing "unhealthy"
+
+1. **Check the application** — Is the app actually running on port 8000?
+   ```bash
+   # On the EC2 instance:
+   curl http://localhost:8000
+   ```
+2. **Check the health check path** — Does the configured path return HTTP 200?
+3. **Check security groups** — Does the EC2 SG allow traffic from the ALB SG on port 8000?
+4. **Check the health check port** — Is it set to 8000 (not 80)?
+
+#### ❌ Cannot access ALB DNS from browser
+
+1. **Check ALB security group** — Inbound rule must allow HTTP (port 80) from `0.0.0.0/0`
+2. **Check ALB scheme** — Must be "internet-facing" (not "internal")
+3. **Check ALB subnets** — Must be in public subnets with Internet Gateway route
+4. **DNS propagation** — Wait a few minutes for DNS to propagate after ALB creation
+
+#### ❌ Auto Scaling Group not launching instances
+
+1. **Check launch template** — Verify AMI ID is valid in the selected region
+2. **Check subnet configuration** — ASG subnets must exist and have available IP addresses
+3. **Check service limits** — Ensure you haven't hit EC2 instance limits
+4. **Check the Activity tab** — Look for error messages in scaling activities
+
+#### ❌ Instances launch but immediately terminate
+
+1. **Check user data script** — Errors in the bootstrap script can cause instance failures
+2. **Check instance logs** — Review `/var/log/cloud-init-output.log` on the instance
+3. **Check health checks** — If the target group health check fails repeatedly, the ASG may replace instances
+
+### Debugging Checklist
+
+```
+□ VPC has an Internet Gateway attached
+□ Public subnets have a route to the IGW (0.0.0.0/0 → IGW)
+□ ALB is in public subnets
+□ ALB security group allows inbound HTTP:80
+□ ALB listener forwards to the correct target group
+□ Target group port is 8000
+□ Target group health check port is 8000
+□ EC2 security group allows inbound TCP:8000 from ALB SG
+□ Application is running and listening on port 8000
+□ EC2 instances are in private subnets
+□ Auto Scaling Group references correct launch template
+□ Auto Scaling Group is attached to the target group
+```
+
+---
+
+## 📚 Key Learnings
+
+### 1. Network Architecture
+
+- A **VPC** provides complete network isolation — you control the IP ranges, subnets, routing, and gateways
+- **Subnets** determine whether resources are publicly accessible (public subnet with IGW route) or isolated (private subnet without IGW route)
+- **Availability Zones** are independent failure domains — deploying across multiple AZs is essential for high availability
+
+### 2. Security in Depth
+
+- **Private subnets** are the first line of defense — instances without public IPs cannot be directly reached
+- **Security group chaining** (referencing SG IDs instead of IP ranges) creates a trust relationship between resources
+- The principle of **least privilege** means opening only the ports that are absolutely necessary
+- **Never expose backend instances directly** — always use a load balancer as a reverse proxy
+
+### 3. Load Balancing and Health
+
+- An **ALB** operates at Layer 7 (HTTP) and can make routing decisions based on content
+- **Health checks** are critical — they ensure the ALB only sends traffic to instances that can actually serve requests
+- **Target groups** decouple the ALB from specific instances, enabling dynamic scaling
+
+### 4. Auto Scaling
+
+- **Launch templates** ensure consistency — every instance is identically configured
+- **Auto Scaling Groups** automate capacity management, replacing failed instances and scaling with demand
+- **User data scripts** enable zero-touch instance provisioning — instances are production-ready from the moment they launch
+
+### 5. Infrastructure Thinking
+
+- Always start with a clear **architecture diagram** before building
+- Think about **traffic flow** — how does a request get from the user to the application and back?
+- **Security groups** are stateful firewalls — return traffic is automatically allowed
+- Every AWS service has a specific role — understanding **why** each service is needed is more important than knowing **how** to configure it
+
+### 6. Operational Best Practices
+
+- **Never commit credentials** — Use `.gitignore` to prevent accidental commits of `.pem` files, `.env` files, and AWS credentials
+- **Use private subnets** for backend workloads — this is an industry standard, not an optional best practice
+- **Monitor health checks** — They are the pulse of your application; if health checks fail, users are impacted
+- **Document everything** — Future you (and your team) will thank you for clear architecture documentation
+
+---
+
+## 📝 License
+
+This project is for educational and demonstration purposes.
+
+---
+
+## 🙏 Acknowledgments
+
+Built as a hands-on project to learn and demonstrate AWS VPC infrastructure, networking, and cloud architecture best practices.
