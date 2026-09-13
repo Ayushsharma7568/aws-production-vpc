@@ -416,3 +416,134 @@ The Auto Scaling Group (ASG) **automates capacity management** by launching and 
 - **AZ balancing** — Distributes instances evenly across Availability Zones
 - **Integration** — Automatically registers new instances with the target group
 
+---
+
+## 🛡️ Security Groups
+
+Security Groups act as **virtual firewalls** controlling inbound and outbound traffic for AWS resources. This architecture uses separate security groups for the ALB and EC2 instances, following the principle of least privilege.
+
+### ALB Security Group
+
+Controls traffic to and from the Application Load Balancer:
+
+**Inbound Rules:**
+
+| Type | Protocol | Port | Source | Purpose |
+|---|---|---|---|---|
+| HTTP | TCP | 80 | `0.0.0.0/0` (Anywhere) | Allow internet traffic to ALB |
+
+**Outbound Rules:**
+
+| Type | Protocol | Port | Destination | Purpose |
+|---|---|---|---|---|
+| Custom TCP | TCP | 8000 | EC2 Security Group | Allow ALB to reach EC2 instances |
+
+### EC2 Instance Security Group
+
+Controls traffic to and from the private EC2 instances:
+
+**Inbound Rules:**
+
+| Type | Protocol | Port | Source | Purpose |
+|---|---|---|---|---|
+| Custom TCP | TCP | 8000 | ALB Security Group | Allow traffic ONLY from the ALB |
+
+**Outbound Rules:**
+
+| Type | Protocol | Port | Destination | Purpose |
+|---|---|---|---|---|
+| All Traffic | All | All | `0.0.0.0/0` | Allow outbound traffic (updates, etc.) |
+
+### Security Group Chain
+
+```
+Internet (HTTP:80)
+    │
+    ▼
+┌─────────────────────────┐
+│  ALB Security Group      │
+│  Inbound:  HTTP:80 from  │
+│            0.0.0.0/0     │
+│  Outbound: TCP:8000 to   │
+│            EC2 SG        │
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│  EC2 Security Group      │
+│  Inbound:  TCP:8000 from │
+│            ALB SG only   │
+│  Outbound: All traffic   │
+└─────────────────────────┘
+```
+
+### Key Security Design Decisions
+
+1. **SG chaining** — The EC2 security group references the ALB security group as its source, not an IP range. This means only traffic originating from the ALB is permitted.
+2. **No SSH from internet** — There is no inbound SSH (port 22) rule from `0.0.0.0/0`, preventing direct remote access from the internet.
+3. **Minimal port exposure** — Only port 8000 is open on EC2 instances, and only from the ALB.
+4. **Principle of least privilege** — Each security group allows only the minimum required traffic.
+
+---
+
+## 🧪 Testing
+
+### Verifying the Infrastructure
+
+#### 1. ALB DNS Access
+
+Test that the application is reachable through the ALB:
+
+```bash
+# Get the ALB DNS name from the AWS Console or CLI
+# Then access it in a browser or via curl:
+curl http://<ALB-DNS-Name>
+```
+
+- ✅ **Expected:** HTTP 200 response with application content
+- ❌ **If failing:** Check security groups, target group health, and listener configuration
+
+#### 2. Target Group Health Checks
+
+Verify that EC2 instances are passing health checks:
+
+1. Navigate to **EC2 → Target Groups** in the AWS Console
+2. Select the target group
+3. Check the **Targets** tab
+4. All registered instances should show status: **healthy**
+
+| Status | Meaning |
+|---|---|
+| `healthy` | Instance is passing health checks ✅ |
+| `unhealthy` | Instance is failing health checks ❌ |
+| `draining` | Instance is being deregistered ⚠️ |
+| `initial` | Health checks are in progress 🔄 |
+
+#### 3. Multi-AZ Verification
+
+Confirm instances are distributed across Availability Zones:
+
+1. Navigate to **EC2 → Instances** in the AWS Console
+2. Check the **Availability Zone** column for each instance
+3. Instances should be spread across at least 2 different AZs
+
+#### 4. Security Group Validation
+
+Verify that EC2 instances are NOT directly accessible from the internet:
+
+```bash
+# This should NOT work (instance has no public IP and no direct route)
+curl http://<Private-IP>:8000    # Should timeout or fail
+
+# This SHOULD work (traffic goes through ALB)
+curl http://<ALB-DNS-Name>       # Should return application response
+```
+
+#### 5. Auto Scaling Verification
+
+Confirm the Auto Scaling Group is maintaining desired capacity:
+
+1. Navigate to **EC2 → Auto Scaling Groups** in the AWS Console
+2. Verify **Desired**, **Min**, and **Max** capacity values
+3. Check the **Activity** tab for recent scaling events
+4. Confirm instances match the desired count
